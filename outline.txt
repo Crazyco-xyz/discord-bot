@@ -1,0 +1,16 @@
+Login for database will be provided through environment vars
+
+Database:
+- Bot Stuff:
+    - Token
+    - Server Settings
+        - Custom Commands
+        - Log channels
+            - Moderation events
+            - Delete, Update Message events
+        - Ticket system
+            - Multiple ticket systems per server
+
+- User Stuff:
+    - OAuth token (login through discord)
+    - Cookies for web-panel
