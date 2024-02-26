@@ -31,8 +31,11 @@ def create_db():
                  "  constraint config_guilds_pk"
                  "      primary key autoincrement,"
                  "guild_name varchar(100),"
-                 "guild_id integer"
+                 "guild_id integer,"
+                 "guild_captcha_channel integer"
                  ");")
+
+        print("Created guild config table")
 
         cursor.execute(query)
 
