@@ -160,3 +160,5 @@ cython_debug/
 #.idea/
 
 database/database.db
+
+.idea/
