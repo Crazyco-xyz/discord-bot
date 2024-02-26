@@ -1,24 +1,27 @@
-import asyncio
-
-from sql.database import Database
 import pathlib
-import discord
-from discord.ext import commands
 
-from bot.events.message_event_listener import OnMessageEvent
-from bot.commands.test import TestCommand
+import discord
 from discord import app_commands
 
+from bot.commands import command_test
+from bot.events import message_event_listener
+from sql.database import Database
 
-class Bot(discord.ext.commands.Bot):
+
+class Bot(discord.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.tree = None
 
     async def on_ready(self):
-        print("Ready!")
-        await self.add_cog(OnMessageEvent(self))
-        await self.add_cog(TestCommand(self), guilds=[discord.Object(id=1208037232288604250)])
-        print("Added cogs")
+        print("Adding commands")
+        command_test.register_command(self.tree)
+        print("Syncing slash commands")
+        await tree.sync(guild=discord.Object(id=1208037232288604250))
+        print("Ready")
+
+    async def on_message(self, msg):
+        await message_event_listener.on_message(self, msg)
 
 
 if __name__ == '__main__':
@@ -31,5 +34,7 @@ if __name__ == '__main__':
 
     intents = discord.Intents.all()
 
-    bot = Bot(command_prefix="!", intents=intents)
+    bot = Bot(intents=intents)
+    tree = app_commands.CommandTree(bot)
+    bot.tree = tree
     bot.run(token)

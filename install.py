@@ -16,7 +16,7 @@ def create_db():
     if not database_file_path.exists():
         db = sqlite3.connect(f"{database_file_path}")
         cursor = db.cursor()
-
+#meow
         query = ("create table config_global ("
                  "bot_token varchar(100),"
                  "admins_global LONGTEXT"

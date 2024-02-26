@@ -1,11 +1,5 @@
 import discord
-from discord.ext import commands
 
 
-class OnMessageEvent(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    @commands.Cog.listener()
-    async def on_message(self, msg: discord.Message):
-        print(msg.content)
+async def on_message(bot: discord.Client, message: discord.Message):
+    print(message.content)
