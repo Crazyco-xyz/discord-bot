@@ -1,46 +1,46 @@
 import pathlib
-
-import sqlite3
+from dotenv import load_dotenv
+from sql.database import Database
 
 root_dir = pathlib.Path(__file__).parent
 
-database_dir_path = pathlib.Path(f"{root_dir}/database")
-
-database_file_path = pathlib.Path(f"{database_dir_path}/database.db")
-
 
 def create_db():
-    if not database_dir_path.exists():
-        database_dir_path.mkdir()
+    db = Database()
+    query = ("create table config_global ("
+             "bot_token varchar(100),"
+             "admins_global LONGTEXT"
+             ");")
 
-    if not database_file_path.exists():
-        db = sqlite3.connect(f"{database_file_path}")
-        cursor = db.cursor()
-#meow
-        query = ("create table config_global ("
-                 "bot_token varchar(100),"
-                 "admins_global LONGTEXT"
-                 ");")
+    db.execute(query)
 
-        cursor.execute(query)
+    print("Created global config table")
 
-        print("Created global config table")
+    query = """create table config_guilds
+        (
+            id                    int auto_increment,
+            guild_id              integer null,
+            guild_captcha_channel int     null,
+            constraint config_guilds_pk
+                primary key (id)
+        );
+    """
 
-        query = ("create table config_guilds ("
-                 "id integer "
-                 "  constraint config_guilds_pk"
-                 "      primary key autoincrement,"
-                 "guild_name varchar(100),"
-                 "guild_id integer,"
-                 "guild_captcha_channel integer"
-                 ");")
+    db.execute(query)
 
-        print("Created guild config table")
+    db.commit()
 
-        cursor.execute(query)
+    print("Created guild config table")
 
-        db.commit()
-        db.close()
+    bot_token = input("Bot token please: ")
+
+    sql = "insert into config_global (bot_token, admins_global) values (%(token)s, %(admins)s)"
+
+    db.execute(sql, {"token": bot_token, "admins": ""})
+
+    db.close()
 
 
-create_db()
+if __name__ == '__main__':
+    load_dotenv()
+    create_db()

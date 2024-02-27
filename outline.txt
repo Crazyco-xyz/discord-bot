@@ -12,5 +12,5 @@ Database:
             - Multiple ticket systems per server
 
 - User Stuff:
-    - OAuth token (login through discord)
+    - OAuth token (login through nextcord)
     - Cookies for web-panel

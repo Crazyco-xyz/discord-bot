@@ -1,2 +1,2 @@
-# discord-bot
+# nextcord-bot
 CrazyCo Management bot

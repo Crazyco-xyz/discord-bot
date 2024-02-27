@@ -1,0 +1,5 @@
+DATABASE_HOST=something
+DATABASE_PORT=something
+DATABASE_DATABASE=something
+DATABASE_USER=something
+DATABASE_PASSWORD=something
