@@ -14,3 +14,11 @@ Database:
 - User Stuff:
     - OAuth token (login through nextcord)
     - Cookies for web-panel
+
+
+Bot permissions:
+    - View Channels
+    - Manage Channels
+    - Manage Roles
+    - Send Messages
+    - Use Application Commands

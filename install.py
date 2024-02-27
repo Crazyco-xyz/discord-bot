@@ -7,26 +7,30 @@ root_dir = pathlib.Path(__file__).parent
 
 def create_db():
     db = Database()
-    query = ("create table config_global ("
-             "bot_token varchar(100),"
-             "admins_global LONGTEXT"
-             ");")
+    sql = (
+        "create table config_global ("
+        "bot_token varchar(100),"
+        "admins_global LONGTEXT"
+        ");"
+    )
 
-    db.execute(query)
+    db.execute(sql)
 
     print("Created global config table")
 
-    query = """create table config_guilds
+    sql = """create table config_guilds
         (
             id                    int auto_increment,
-            guild_id              integer null,
-            guild_captcha_channel int     null,
+            guild_id               BIGINT    null,
+            guild_captcha_channel  BIGINT    null,
+            guild_captcha_role     BIGINT    null,
+            guild_last_captcha_msg BIGINT    null,
             constraint config_guilds_pk
                 primary key (id)
         );
     """
 
-    db.execute(query)
+    db.execute(sql)
 
     db.commit()
 
@@ -41,6 +45,6 @@ def create_db():
     db.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     load_dotenv()
     create_db()

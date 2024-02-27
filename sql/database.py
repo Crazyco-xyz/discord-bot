@@ -26,7 +26,7 @@ class Database:
                 port=self._host_port_,
                 user=self._user_name_,
                 passwd=self._user_password_,
-                database=self._database_name_
+                database=self._database_name_,
             )
         except mysql.connector.errors.Error:
             print(f"An error has occurred while connecting to the database!")
@@ -34,7 +34,7 @@ class Database:
 
         return self._connection_
 
-    def execute(self, query, variables=None, commit=False):
+    def execute(self, query, variables=None, commit=True):
         """
         Executes a query
         :param commit: If it should commit the changes
@@ -48,18 +48,19 @@ class Database:
         cursor = self._connection_.cursor()
         cursor.execute(query, variables)
         result = cursor.fetchall()
-        if commit:
-            cursor.commit()
         cursor.close()
+        if commit:
+            self.commit()
         return result
 
     def commit(self):
         self._connection_.commit()
 
-    def close(self):
+    def close(self, no_commit=False):
         """
         Commits the actions taken and closes the connection
         :return:
         """
-        self.commit()
+        if not no_commit:
+            self.commit()
         self._connection_.close()
