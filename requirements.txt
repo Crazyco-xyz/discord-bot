@@ -1,1 +1,2 @@
-discord.py
+nextcord
+python-dotenv
