@@ -25,6 +25,8 @@ def create_db():
             guild_captcha_channel  BIGINT    null,
             guild_captcha_role     BIGINT    null,
             guild_last_captcha_msg BIGINT    null,
+            guild_log_retention    int default 30 not null,
+            
             constraint config_guilds_pk
                 primary key (id)
         );
@@ -32,9 +34,23 @@ def create_db():
 
     db.execute(sql)
 
-    db.commit()
-
     print("Created guild config table")
+
+    sql = """
+    create table guild_logs (
+        id              int auto_increment,
+        guild_id        bigint null,
+        log_level       varchar(100),
+        log_date_added  datetime,
+        log_content     longtext,
+        
+        constraint guild_logs_pk
+            primary key (id)
+    )
+    """
+
+    db.execute(sql)
+    print("Created guild logs table")
 
     bot_token = input("Bot token please: ")
 

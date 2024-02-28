@@ -1,7 +1,8 @@
-import mysql.connector
-import mysql
-import traceback
 import os
+from threading import Lock
+
+import mysql
+import mysql.connector
 
 
 class Database:
@@ -13,24 +14,21 @@ class Database:
         self._user_password_ = os.environ["DATABASE_PASSWORD"]
         self._database_name_ = os.environ["DATABASE_DATABASE"]
         self._connection_ = None
-        self.__create_connection__()
+        self._lock_ = Lock()
+        self._create_connection_()
 
-    def __create_connection__(self):
+    def _create_connection_(self):
         """
         Establishes the connection between the database and the api_old
         :return:
         """
-        try:
-            self._connection_ = mysql.connector.connect(
-                host=self._host_name_,
-                port=self._host_port_,
-                user=self._user_name_,
-                passwd=self._user_password_,
-                database=self._database_name_,
-            )
-        except mysql.connector.errors.Error:
-            print(f"An error has occurred while connecting to the database!")
-            traceback.print_exc()
+        self._connection_ = mysql.connector.connect(
+            host=self._host_name_,
+            port=self._host_port_,
+            user=self._user_name_,
+            passwd=self._user_password_,
+            database=self._database_name_,
+        )
 
         return self._connection_
 
@@ -42,19 +40,22 @@ class Database:
         :param variables: The variables to prevent sql injection
         :return: The result of the query. Returns an empty list if there is no return value (for example in an 'insert into' query)
         """
-
-        if variables is None:
-            variables = {}
-        cursor = self._connection_.cursor()
-        cursor.execute(query, variables)
-        result = cursor.fetchall()
-        cursor.close()
-        if commit:
-            self.commit()
-        return result
+        with self._lock_:
+            if variables is None:
+                variables = {}
+            cursor = self._connection_.cursor()
+            cursor.execute(query, variables)
+            result = cursor.fetchall()
+            cursor.close()
+            if commit:
+                self.commit()
+            return result
 
     def commit(self):
         self._connection_.commit()
+
+    def is_connected(self):
+        return self._connection_ is not None
 
     def close(self, no_commit=False):
         """

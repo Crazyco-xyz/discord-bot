@@ -22,3 +22,4 @@ Bot permissions:
     - Manage Roles
     - Send Messages
     - Use Application Commands
+    - Kick Members

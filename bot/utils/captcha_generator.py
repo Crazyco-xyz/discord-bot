@@ -1,10 +1,35 @@
+import random
+import string
+import typing
 from io import BytesIO
 
-from captcha.image import ImageCaptcha, Image, ColorTuple, Draw
-from PIL import ImageFilter
-import string
-import random
-import typing
+from PIL import ImageFilter, ImageDraw, Image
+from captcha.image import ImageCaptcha, ColorTuple, Draw
+from captcha.audio import AudioCaptcha
+
+
+CAPTCHA_CODE_LENGTH = 6
+
+
+def add_lines(image):
+    width = random.randrange(6, 8)
+    co1 = random.randrange(0, 75)
+    co3 = random.randrange(275, 350)
+    co2 = random.randrange(40, 65)
+    co4 = random.randrange(40, 65)
+    draw = ImageDraw.Draw(image)
+    draw.line([(co1, co2), (co3, co4)], width=width, fill=(90, 90, 90))
+
+
+def add_noise(image):
+    noise_percentage = 0.25  # 25%
+
+    pixels = image.load()  # create the pixel map
+    for i in range(image.size[0]):  # for every pixel:
+        for j in range(image.size[1]):
+            rdn = random.random()  # Give a random %
+            if rdn < noise_percentage:
+                pixels[i, j] = (90, 90, 90)
 
 
 def create_noise_curve(image: Image, color: ColorTuple) -> Image:
@@ -20,27 +45,36 @@ def create_noise_curve(image: Image, color: ColorTuple) -> Image:
     return image
 
 
-def generate_captcha() -> typing.Tuple[str, BytesIO]:
-    image = ImageCaptcha(width=280, height=90)
+def gen_code(length: int = CAPTCHA_CODE_LENGTH, use_letters=True):
+    return "".join(random.choice((string.ascii_uppercase if use_letters else "") + string.digits) for _ in range(length))
 
-    available_strings = [string.digits, string.ascii_letters]
 
-    captcha_string = ""
-    for i in range(5):
-        captcha_string += random.choice(random.choice(available_strings))
+def generate_audio(path) -> str:
+    audio_captcha = AudioCaptcha()
+    code = gen_code(use_letters=False)
+    audio_captcha.write(code, path)
+    return code
 
-    data = image.create_captcha_image(chars=captcha_string, color=(82, 94, 236), background=(88, 101, 242))
 
-    data.filter(ImageFilter.EDGE_ENHANCE_MORE)
-    data.filter(ImageFilter.CONTOUR)
-    data.filter(ImageFilter.EDGE_ENHANCE_MORE)
+def generate_captcha(font_path) -> typing.Tuple[str, BytesIO]:
+    image_captcha = ImageCaptcha(width=280, height=90, fonts=[font_path])
 
-    image.create_noise_dots(data, (35, 39, 42), number=60)
+    captcha_string = gen_code()
 
-    create_noise_curve(data, (35, 39, 42))
+    image: Image = image_captcha.create_captcha_image(chars=captcha_string, color=(90, 90, 90),
+                                                      background=(88, 101, 242))
+
+    image.filter(ImageFilter.EDGE_ENHANCE_MORE)
+    image.filter(ImageFilter.CONTOUR)
+    image.filter(ImageFilter.EDGE_ENHANCE_MORE)
+
+    image_captcha.create_noise_dots(image, (35, 39, 42), number=60)
+
+    add_lines(image)
+    add_noise(image)
 
     out = BytesIO()
-    data.save(out, format="png")
+    image.save(out, format="png")
     out.seek(0)
 
     return captcha_string, out

@@ -1,6 +1,8 @@
 import nextcord
 from nextcord.ext import commands
 
+from bot.commands import command_captcha
+
 import main
 
 
@@ -11,7 +13,8 @@ class OnJoinListener(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: nextcord.Member):
-        print(f"A new member just joined: {member.name}. Applying captcha role")
+        logger = self.bot.get_guild_logger(member.guild)
+        logger.info(f"A new member just joined: {member.name}. Applying captcha role")
         sql = "select guild_captcha_role from config_guilds where guild_id = %(id)s"
         result = self.bot.db.execute(sql, {"id": member.guild.id})
 
@@ -28,11 +31,14 @@ class OnJoinListener(commands.Cog):
         role = member.guild.get_role(role_id)
 
         if role is None:
-            print(f"Failed to give out role: Role with id {role_id} not found!")
+            logger.error(f"Failed to give out role: Role with id {role_id} not found!")
             return
 
         await member.add_roles(role, reason="Needs to complete a captcha")
-        print(f"Added role {role.name} to {member.name}!")
+        data = command_captcha.CaptchaData.from_user_and_guild_id(member.id, member.guild.id)
+        if data is not None:
+            data.delete()
+        logger.info(f"Added role {role.name} to {member.name}!")
 
 def setup(bot):
     bot.add_cog(OnJoinListener(bot))
