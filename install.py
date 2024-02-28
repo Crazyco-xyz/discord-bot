@@ -20,12 +20,17 @@ def create_db():
 
     sql = """create table config_guilds
         (
-            id                    int auto_increment,
-            guild_id               BIGINT    null,
-            guild_captcha_channel  BIGINT    null,
-            guild_captcha_role     BIGINT    null,
-            guild_last_captcha_msg BIGINT    null,
-            guild_log_retention    int default 30 not null,
+            id                              int auto_increment,
+            guild_id                        BIGINT    null,
+            guild_captcha_channel           BIGINT    null,
+            guild_captcha_role              BIGINT    null,
+            guild_last_captcha_msg          BIGINT    null,
+            guild_captcha_background_color  varchar(100) default '255, 0, 255' not null,
+            guild_captcha_text_color        varchar(100) default '90, 90, 90' not null,
+            guild_captcha_embed_title       longtext  null,
+            guild_captcha_embed_description longtext  null,
+            guild_captcha_enabled           bit default 0 not null,
+            guild_log_retention             int default 30 not null,
             
             constraint config_guilds_pk
                 primary key (id)

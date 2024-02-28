@@ -56,13 +56,13 @@ def generate_audio(path) -> str:
     return code
 
 
-def generate_captcha(font_path) -> typing.Tuple[str, BytesIO]:
+def generate_captcha(font_path, background_color: tuple[int, int, int], text_color: tuple[int, int, int]) -> typing.Tuple[str, BytesIO]:
     image_captcha = ImageCaptcha(width=280, height=90, fonts=[font_path])
 
     captcha_string = gen_code()
 
-    image: Image = image_captcha.create_captcha_image(chars=captcha_string, color=(90, 90, 90),
-                                                      background=(88, 101, 242))
+    image: Image = image_captcha.create_captcha_image(chars=captcha_string, color=text_color,
+                                                      background=background_color)  # old value: (88, 101, 242)
 
     image.filter(ImageFilter.EDGE_ENHANCE_MORE)
     image.filter(ImageFilter.CONTOUR)

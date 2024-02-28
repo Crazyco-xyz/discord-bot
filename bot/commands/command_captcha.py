@@ -34,16 +34,12 @@ class CaptchaData:
 
 
 def get_captcha_role(bot: discord_bot.Bot, guild_id: int) -> [nextcord.Role | None]:
-    sql = "select guild_captcha_role from config_guilds where guild_id = %(id)s"
-    result = bot.db.execute(sql, {"id": guild_id})
+    config = DBGuildConfig.from_guild_id(db=bot.db, guild_id=guild_id)
 
-    if not result:
+    if config is None:
         return None
 
-    if not result[0][0]:
-        return None
-
-    return bot.get_guild(guild_id).get_role(result[0][0])
+    return bot.get_guild(guild_id).get_role(config.guild_captcha_role)
 
 
 class CaptchaSolveModal(nextcord.ui.Modal):
@@ -78,10 +74,10 @@ class CaptchaSolveModal(nextcord.ui.Modal):
             return
         captcha_data.attempts += 1
 
-        print(
-            f"Captcha solution submitted: {self.captcha_input.value} | Expected: {captcha_data.expected_solution} | Attempt: {captcha_data.attempts}")
+        logger.info(
+            f"Captcha solution submitted ({interaction.user.name}): {self.captcha_input.value} | Expected: {captcha_data.expected_solution} | Attempt: {captcha_data.attempts}")
 
-        if self.captcha_input.value != captcha_data.expected_solution:
+        if self.captcha_input.value.lower() != captcha_data.expected_solution.lower():
             if captcha_data.attempts >= MAX_CAPTCHA_ATTEMPTS:
                 try:
                     await interaction.user.kick(reason="Failed the captcha 3 times")
@@ -102,6 +98,9 @@ class CaptchaSolveModal(nextcord.ui.Modal):
 
         captcha_data.delete()
         captcha_role = get_captcha_role(self.bot, interaction.guild.id)
+        if captcha_role is None:
+            logger.error("Invalid captcha role set! Cannot remove from user!")
+            return
         await interaction.user.remove_roles(captcha_role, reason="Passed captcha")
         logger.info(f"{interaction.user.name} has passed the captcha")
 
@@ -125,7 +124,14 @@ class CaptchaButtonView(nextcord.ui.View):
     async def on_click(self, button, interaction: nextcord.Interaction):
         logger = self.bot.get_guild_logger(interaction.guild)
 
-        code, data = captcha_generator.generate_captcha(f"{self.bot.project_root}/bot/utils/fonts/arial.ttf")
+        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
+
+        code, data = captcha_generator.generate_captcha(
+            font_path=f"{self.bot.project_root}/bot/utils/fonts/arial.ttf",
+            background_color=config.guild_captcha_background_color,
+            text_color=config.guild_captcha_text_color
+        )
+
         await interaction.response.send_message(
             embed=nextcord.Embed(
                 title="Verify yourself",
@@ -231,25 +237,39 @@ class CaptchaCommand(commands.Cog):
     async def captcha_enable(
             self,
             interaction: nextcord.Interaction,
-            choice: int = nextcord.SlashOption(name="option", choices={"on": 1, "off": 0}),
+            enabled: int = nextcord.SlashOption(name="option", choices={"on": 1, "off": 0}),
     ) -> None:
+        logger = self.bot.get_guild_logger(interaction.guild.id)
+
+        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
+
+        config.guild_captcha_enabled = enabled
+
+        logger.info(f"The captcha has been {'enabled' if enabled else 'disabled'} by {interaction.user.name}!")
+
         await interaction.response.send_message(
-            f"You have {'enabled' if choice else 'disabled'} the captcha requirement."
+            embed=nextcord.Embed(
+                title="Captcha Settings",
+                description=f"You have {'enabled' if enabled else 'disabled'} the captcha requirement.",
+                color=nextcord.Color.green()
+            ),
+            ephemeral=True
         )
 
     @captcha_command.subcommand(
-        name="set_channel", description="Set the captcha channel"
+        name="set_channel",
+        description="Set the captcha channel"
     )
     async def captcha_set(
             self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
     ):
 
         logger = self.bot.get_guild_logger(interaction.guild.id)
-        config = DBGuildConfig.from_guild_id(self.bot, interaction.guild.id)
+        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
 
         if config is None:
             config = DBGuildConfig.create(
-                bot=self.bot,
+                db=self.bot.db,
                 guild_id=interaction.guild.id
             )
 
@@ -261,9 +281,10 @@ class CaptchaCommand(commands.Cog):
                     title="Captcha Settings",
                     description=f"Failed to send in verify message in {channel.mention} due to missing permissions.",
                     color=nextcord.Color.red()
-                )
+                ),
+                ephemeral=True
             )
-
+            logger.error(f"Failed to send in verify message in channel {channel.name} ({channel.id})")
             return
 
         config.guild_captcha_channel = channel.id
@@ -275,7 +296,8 @@ class CaptchaCommand(commands.Cog):
                 title="Captcha Settings",
                 description=f"You have picked {channel.mention}",
                 color=nextcord.Color.green(),
-            )
+            ),
+            ephemeral=True
         )
 
     @captcha_command.subcommand(
@@ -294,28 +316,26 @@ class CaptchaCommand(commands.Cog):
                     title="Captcha Settings",
                     description="Failed to create role. Insufficient permissions.",
                     color=nextcord.Color.red(),
-                )
+                ),
+                ephemeral=True
             )
             logger.error("Failed to create captcha role. Insufficient permissions")
             return
 
-        sql = "select * from config_guilds where guild_id = %(id)s"
-        result = self.bot.db.execute(sql, {"id": guild.id})
+        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
 
-        if not result:
-            sql = "insert into config_guilds (guild_id, guild_captcha_role) VALUES (%(id)s, %(role)s)"
+        if config is None:
+            config = DBGuildConfig.create(db=self.bot.db, guild_id=interaction.guild.id)
 
-        else:
-            sql = "update config_guilds set guild_captcha_role = %(role)s where guild_id = %(id)s"
-
-        self.bot.db.execute(sql, {"id": guild.id, "role": role.id}, commit=True)
+        config.guild_captcha_role = role.id
 
         await interaction.response.send_message(
             embed=nextcord.Embed(
                 title="Captcha Settings",
                 description=f"Successfully created role {role.mention}!",
                 color=nextcord.Color.green(),
-            )
+            ),
+            ephemeral=True
         )
         logger.info("Created captcha role successfully!")
 
@@ -326,9 +346,9 @@ class CaptchaCommand(commands.Cog):
     async def captcha_set_role(self, interaction: nextcord.Interaction, role: nextcord.Role):
         logger = self.bot.get_guild_logger(interaction.guild)
 
-        config = DBGuildConfig.from_guild_id(bot=self.bot, guild_id=interaction.guild.id)
+        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
         if not config:
-            config = DBGuildConfig.create(bot=self.bot, guild_id=interaction.guild.id)
+            config = DBGuildConfig.create(db=self.bot.db, guild_id=interaction.guild.id)
 
         config.guild_captcha_role = role.id
 

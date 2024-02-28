@@ -3,6 +3,8 @@ from nextcord.ext import commands
 
 from bot.commands import command_captcha
 
+from sql.tables import DBGuildConfig
+
 import main
 
 
@@ -14,31 +16,22 @@ class OnJoinListener(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: nextcord.Member):
         logger = self.bot.get_guild_logger(member.guild)
-        logger.info(f"A new member just joined: {member.name}. Applying captcha role")
-        sql = "select guild_captcha_role from config_guilds where guild_id = %(id)s"
-        result = self.bot.db.execute(sql, {"id": member.guild.id})
+        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=member.guild.id)
+        logger.info(f"A new member just joined: {member.name}.{' Applying captcha role' if config.guild_captcha_enabled else ''}")
 
-        if not result:
-            # no entry in the config_guilds table yet
-            pass
+        if config.guild_captcha_enabled:
 
-        role_id = result[0][0]
+            role = member.guild.get_role(config.guild_captcha_role)
 
-        if not role_id:
-            # captcha role has not been set
-            pass
+            if role is None:
+                logger.error(f"Failed to give out role: Role with id {config.guild_captcha_role} not found!")
+                return
 
-        role = member.guild.get_role(role_id)
-
-        if role is None:
-            logger.error(f"Failed to give out role: Role with id {role_id} not found!")
-            return
-
-        await member.add_roles(role, reason="Needs to complete a captcha")
-        data = command_captcha.CaptchaData.from_user_and_guild_id(member.id, member.guild.id)
-        if data is not None:
-            data.delete()
-        logger.info(f"Added role {role.name} to {member.name}!")
+            await member.add_roles(role, reason="Needs to complete a captcha")
+            data = command_captcha.CaptchaData.from_user_and_guild_id(member.id, member.guild.id)
+            if data is not None:
+                data.delete()
+            logger.info(f"Added role {role.name} to {member.name}!")
 
 def setup(bot):
     bot.add_cog(OnJoinListener(bot))

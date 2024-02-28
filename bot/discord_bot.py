@@ -7,6 +7,7 @@ from nextcord.ext import commands
 
 from bot.utils import logger
 from sql.database import Database
+from sql.tables import DBGuildConfig
 
 
 class Bot(nextcord.ext.commands.Bot):
@@ -41,13 +42,16 @@ class Bot(nextcord.ext.commands.Bot):
         print("Done")
 
     async def setup_guilds(self):
-        sql = "select * from config_guilds"
+        sql = "select guild_id from config_guilds"
         result = self.db.execute(sql)
+        if not result:
+            return
 
-        for (_, guild_id, guild_captcha_channel, guild_captcha_role, guild_last_captcha_msg, guild_log_retention) in result:
+        for guild_id in result[0]:
+            config = DBGuildConfig.from_guild_id(db=self.db, guild_id=guild_id)
             guild = self.get_guild(guild_id)
             setup_logger = self.get_guild_logger(guild)
-            channel = guild.get_channel(guild_captcha_channel)
+            channel = guild.get_channel(config.guild_captcha_channel)
             if channel is None:
                 setup_logger.warn(f"Failed to find captcha channel for guild {guild.name}")
                 continue
@@ -58,15 +62,18 @@ class Bot(nextcord.ext.commands.Bot):
                 setup_logger.error("Failed to get captcha cog")
                 continue
 
-            if guild_last_captcha_msg is not None:
+            if config.guild_last_captcha_msg is not None:
                 try:
-                    msg = await channel.fetch_message(guild_last_captcha_msg)
+                    msg = await channel.fetch_message(config.guild_last_captcha_msg)
                     try:
                         await msg.delete()
                     except nextcord.NotFound:
                         setup_logger.warn("Failed to delete the old captcha message since it's not found")
 
                 except nextcord.NotFound:
-                    setup_logger.warn(f"Unable to find old captcha message ({guild_last_captcha_msg})")
+                    setup_logger.warn(f"Unable to find old captcha message ({config.guild_last_captcha_msg})")
+
+            else:
+                setup_logger.info("No last captcha message set!")
 
             await captcha_module.send_captcha_message(channel)
