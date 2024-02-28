@@ -163,3 +163,4 @@ database/database.db
 
 .idea/
 .vscode/
+/data/
