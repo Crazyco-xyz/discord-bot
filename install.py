@@ -30,7 +30,7 @@ def create_db():
             guild_captcha_embed_title       longtext  default 'Beep-Boop, are you human?' null,
             guild_captcha_embed_description longtext  default 'Hit the button below to verify yourself' null,
             guild_captcha_enabled           bit default 0 not null,
-            guild_captcha_timeout           int null,
+            guild_captcha_timeout           int default 7 not null,
             guild_log_retention             int default 30 not null,
             guild_admins                    longtext null,
             

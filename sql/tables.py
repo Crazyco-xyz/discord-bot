@@ -18,9 +18,9 @@ class DBGuildConfig:
     _guild_captcha_embed_title: str = None
     _guild_captcha_embed_description: str = None
     _guild_captcha_enabled: bool = None
+    _guild_captcha_timeout: int = None
     _guild_log_retention: int = None
     _guild_admins: str = None
-    _guild_captcha_timeout: int = None
 
     @staticmethod
     def _convert_color_(string: str) -> tuple[int, int, int]:
@@ -125,6 +125,15 @@ class DBGuildConfig:
         self._update(guild_captcha_enabled=value)
 
     @property
+    def guild_captcha_timeout(self):
+        return self._guild_captcha_timeout
+
+    @guild_captcha_timeout.setter
+    def guild_captcha_timeout(self, value: int):
+        self._guild_captcha_timeout = value
+        self._update(guild_captcha_timeout=value)
+
+    @property
     def guild_log_retention(self):
         return self._guild_log_retention
 
@@ -134,13 +143,22 @@ class DBGuildConfig:
         self._update(guild_log_retention=value)
 
     @property
-    def guild_captcha_timeout(self):
-        return self._guild_captcha_timeout
+    def guild_admins(self) -> list[int]:
+        admins = []
+        if self._guild_admins is None:
+            return admins
 
-    @guild_captcha_timeout.setter
-    def guild_captcha_timeout(self, value: int):
-        self._guild_captcha_timeout = value
-        self._update(guild_captcha_timeout=value)
+        for entry in self._guild_admins.split(","):
+            entry = entry.strip()
+            admins.append(int(entry))
+
+        return admins
+
+    @guild_admins.setter
+    def guild_admins(self, value: list[int]):
+        db_string = ", ".join([str(i) for i in value])
+        self._guild_admins = db_string
+        self._update(guild_admins=db_string)
 
     def _update(
             self,
@@ -152,8 +170,9 @@ class DBGuildConfig:
             guild_captcha_embed_title: str = None,
             guild_captcha_embed_description: str = None,
             guild_captcha_enabled: bool = None,
+            guild_captcha_timeout: int = None,
             guild_log_retention: int = None,
-            guild_captcha_timeout: int = None
+            guild_admins: str = None
     ):
         variables = {
             "guild_captcha_channel": guild_captcha_channel,
@@ -164,8 +183,9 @@ class DBGuildConfig:
             "guild_captcha_embed_title": guild_captcha_embed_title,
             "guild_captcha_embed_description": guild_captcha_embed_description,
             "guild_captcha_enabled": guild_captcha_enabled,
+            "guild_captcha_timeout": guild_captcha_timeout,
             "guild_log_retention": guild_log_retention,
-            "guild_captcha_timeout": guild_captcha_timeout
+            "guild_admins": guild_admins,
         }
 
         new_vars = {}
@@ -187,7 +207,8 @@ class DBGuildConfig:
     @staticmethod
     def create(
             db: Database,
-            guild_id: int
+            guild_id: int,
+            refetch_data=False
     ):
         config = DBGuildConfig(
             _db=db,
@@ -195,8 +216,10 @@ class DBGuildConfig:
         )
 
         config._create()
+        if not refetch_data:
+            return config
 
-        return DBGuildConfig
+        return DBGuildConfig.from_guild_id(db, guild_id)
 
     def _create(self):
         variables = {

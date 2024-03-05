@@ -16,6 +16,28 @@ class Bot(nextcord.ext.commands.Bot):
         self.db: Database = None
         self.project_root: str = ""
 
+    async def has_perms(self, member: nextcord.Member | nextcord.User, interaction: nextcord.Interaction, guild_admin=True) -> bool:
+        if type(member) is nextcord.User:
+            member = interaction.guild.get_member(interaction.user.id)
+        config = DBGuildConfig.from_guild_id(self.db, interaction.guild.id)
+        if config is None:
+            config = DBGuildConfig.create(self.db, interaction.guild.id)
+        if not member.guild_permissions.administrator:
+            if guild_admin:
+                if member.id in config.guild_admins:
+                    return True
+
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    title="Insufficient permissions",
+                    description="You don't have enough permissions to run that command!",
+                    color=nextcord.Color.red()
+                ),
+                ephemeral=True
+            )
+            return False
+        return True
+
     def _load_dir_(self, directory, python_path):
         for filename in os.listdir(directory):
             if filename.endswith(".py"):
