@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
+
 from sql.database import Database
-import typing
 
 
 @dataclasses.dataclass
@@ -12,13 +12,15 @@ class DBGuildConfig:
     _guild_id: int = None
     _guild_captcha_channel: int = None
     _guild_captcha_role: int = None
-    _guild_last_captcha_msg: int = None
+    _guild_captcha_last_msg: int = None
     _guild_captcha_background_color: str = None
     _guild_captcha_text_color: str = None
     _guild_captcha_embed_title: str = None
     _guild_captcha_embed_description: str = None
     _guild_captcha_enabled: bool = None
     _guild_log_retention: int = None
+    _guild_admins: str = None
+    _guild_captcha_timeout: int = None
 
     @staticmethod
     def _convert_color_(string: str) -> tuple[int, int, int]:
@@ -28,6 +30,11 @@ class DBGuildConfig:
         blue = int(blue.strip())
 
         return red, green, blue
+
+    @staticmethod
+    def _convert_color_back_(rgb: tuple[int, int, int]):
+        red, green, blue = rgb
+        return ", ".join([str(red), str(green), str(blue)])
 
     @property
     def guild_id(self):
@@ -52,13 +59,13 @@ class DBGuildConfig:
         self._update(guild_captcha_channel=value)
 
     @property
-    def guild_last_captcha_msg(self):
-        return self._guild_last_captcha_msg
+    def guild_captcha_last_msg(self):
+        return self._guild_captcha_last_msg
 
-    @guild_last_captcha_msg.setter
-    def guild_last_captcha_msg(self, value: int):
-        self._guild_last_captcha_msg = value
-        self._update(guild_last_captcha_msg=value)
+    @guild_captcha_last_msg.setter
+    def guild_captcha_last_msg(self, value: int):
+        self._guild_captcha_last_msg = value
+        self._update(guild_captcha_last_msg=value)
 
     @property
     def guild_captcha_background_color(self) -> tuple[int, int, int] | None:
@@ -72,8 +79,7 @@ class DBGuildConfig:
 
     @guild_captcha_background_color.setter
     def guild_captcha_background_color(self, value: tuple[int, int, int]):
-        red, green, blue = value
-        db_string = ", ".join([str(red), str(green), str(blue)])
+        db_string = DBGuildConfig._convert_color_back_(value)
         self._guild_captcha_background_color = db_string
         self._update(guild_captcha_background_color=db_string)
 
@@ -127,28 +133,39 @@ class DBGuildConfig:
         self._guild_log_retention = value
         self._update(guild_log_retention=value)
 
+    @property
+    def guild_captcha_timeout(self):
+        return self._guild_captcha_timeout
+
+    @guild_captcha_timeout.setter
+    def guild_captcha_timeout(self, value: int):
+        self._guild_captcha_timeout = value
+        self._update(guild_captcha_timeout=value)
+
     def _update(
             self,
             guild_captcha_channel: int = None,
             guild_captcha_role: int = None,
-            guild_last_captcha_msg: int = None,
+            guild_captcha_last_msg: int = None,
             guild_captcha_background_color: str = None,
             guild_captcha_text_color: str = None,
             guild_captcha_embed_title: str = None,
             guild_captcha_embed_description: str = None,
             guild_captcha_enabled: bool = None,
             guild_log_retention: int = None,
+            guild_captcha_timeout: int = None
     ):
         variables = {
             "guild_captcha_channel": guild_captcha_channel,
             "guild_captcha_role": guild_captcha_role,
-            "guild_last_captcha_msg": guild_last_captcha_msg,
+            "guild_captcha_last_msg": guild_captcha_last_msg,
             "guild_captcha_background_color": guild_captcha_background_color,
             "guild_captcha_text_color": guild_captcha_text_color,
             "guild_captcha_embed_title": guild_captcha_embed_title,
             "guild_captcha_embed_description": guild_captcha_embed_description,
             "guild_captcha_enabled": guild_captcha_enabled,
-            "guild_log_retention": guild_log_retention
+            "guild_log_retention": guild_log_retention,
+            "guild_captcha_timeout": guild_captcha_timeout
         }
 
         new_vars = {}
@@ -162,6 +179,8 @@ class DBGuildConfig:
         variables["guild_id"] = self.guild_id
 
         sql = f"update config_guilds set {', '.join(set_operations)} where guild_id=%(guild_id)s"
+
+        print(f"{sql=}, {variables=}")
 
         self._db.execute(sql, variables)
 

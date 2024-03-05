@@ -62,6 +62,17 @@ class CaptchaSolveModal(nextcord.ui.Modal):
         logger = self.bot.get_guild_logger(interaction.guild)
 
         captcha_data = CaptchaData.from_user_and_guild_id(interaction.user.id, interaction.guild.id)
+        if captcha_data is None:
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    title="Captcha Failure",
+                    description="Something went wrong. Please generate a new captcha"
+                ),
+                ephemeral=True
+            )
+            logger.error(f"{interaction.user.name} attempted the captcha, but there was no captcha data!")
+            return
+
         if captcha_data.expected_solution is None:
             await interaction.response.send_message(
                 embed=nextcord.Embed(
@@ -81,9 +92,11 @@ class CaptchaSolveModal(nextcord.ui.Modal):
             if captcha_data.attempts >= MAX_CAPTCHA_ATTEMPTS:
                 try:
                     await interaction.user.kick(reason="Failed the captcha 3 times")
-                    logger.info(f"Kicked user {interaction.user.name} for failing the captcha {MAX_CAPTCHA_ATTEMPTS} times")
+                    logger.info(
+                        f"Kicked user {interaction.user.name} for failing the captcha {MAX_CAPTCHA_ATTEMPTS} times")
                 except nextcord.Forbidden:
-                    logger.error(f"Failed to kick user {interaction.user.name} for failing the captcha: Missing Permissions")
+                    logger.error(
+                        f"Failed to kick user {interaction.user.name} for failing the captcha: Missing Permissions")
                 return
 
             await interaction.response.send_message(
@@ -99,7 +112,7 @@ class CaptchaSolveModal(nextcord.ui.Modal):
         captcha_data.delete()
         captcha_role = get_captcha_role(self.bot, interaction.guild.id)
         if captcha_role is None:
-            logger.error("Invalid captcha role set! Cannot remove from user!")
+            logger.error(f"Invalid captcha role ({captcha_role}) set! Cannot remove from user!")
             return
         await interaction.user.remove_roles(captcha_role, reason="Passed captcha")
         logger.info(f"{interaction.user.name} has passed the captcha")
@@ -132,6 +145,26 @@ class CaptchaButtonView(nextcord.ui.View):
             text_color=config.guild_captcha_text_color
         )
 
+        result = CaptchaData.from_user_and_guild_id(interaction.user.id, interaction.guild.id)
+
+        if result is not None:
+            result.expected_solution = code
+            result.captcha_generation_attempts += 1
+
+            if result.captcha_generation_attempts > MAX_CAPTCHA_ATTEMPTS:
+                await interaction.user.kick(reason=f"Generated too many captchas ({MAX_CAPTCHA_ATTEMPTS})")
+                logger.info(
+                    f"Kicked user {interaction.user.name} for generating too many captchas ({MAX_CAPTCHA_ATTEMPTS})")
+                result.delete()
+        else:
+            GUILD_USER_ID_CAPTCHA_MAP[f"{interaction.guild.id}-{interaction.user.id}"] = CaptchaData(
+                attempts=0,
+                captcha_generation_attempts=1,
+                expected_solution=code,
+                guild_id=interaction.guild.id,
+                user_id=interaction.user.id
+            )
+
         await interaction.response.send_message(
             embed=nextcord.Embed(
                 title="Verify yourself",
@@ -141,25 +174,6 @@ class CaptchaButtonView(nextcord.ui.View):
             file=nextcord.File(data, filename="captcha.png"),
             view=CaptchaSolveButton(bot=self.bot)
         )
-
-        result = CaptchaData.from_user_and_guild_id(interaction.user.id, interaction.guild.id)
-
-        if result is not None:
-            result.expected_solution = code
-            result.captcha_generation_attempts += 1
-
-            if result.captcha_generation_attempts > MAX_CAPTCHA_ATTEMPTS:
-                await interaction.user.kick(reason=f"Generated too many captchas ({MAX_CAPTCHA_ATTEMPTS})")
-                logger.info(f"Kicked user {interaction.user.name} for generating too many captchas ({MAX_CAPTCHA_ATTEMPTS})")
-                result.delete()
-        else:
-            GUILD_USER_ID_CAPTCHA_MAP[f"{interaction.guild.id}-{interaction.user.id}"] = CaptchaData(
-                attempts=0,
-                captcha_generation_attempts=0,
-                expected_solution=code,
-                guild_id=interaction.guild.id,
-                user_id=interaction.user.id
-            )
 
     @nextcord.ui.button(label="Verify (audio)", style=nextcord.ButtonStyle.primary)
     async def on_click_audio(self, button, interaction: nextcord.Interaction):
@@ -183,7 +197,7 @@ class CaptchaButtonView(nextcord.ui.View):
         else:
             GUILD_USER_ID_CAPTCHA_MAP[f"{interaction.guild.id}-{interaction.user.id}"] = CaptchaData(
                 attempts=0,
-                captcha_generation_attempts=0,
+                captcha_generation_attempts=1,
                 expected_solution=code,
                 guild_id=interaction.guild.id,
                 user_id=interaction.user.id
@@ -199,12 +213,31 @@ class CaptchaButtonView(nextcord.ui.View):
             view=CaptchaSolveButton(bot=self.bot)
         )
 
+        pathlib.Path(f"{path}/captcha.wav").unlink()
+
 
 class CaptchaCommand(commands.Cog):
     def __init__(self, bot: discord_bot.Bot):
         self.bot = bot
 
-    async def send_captcha_message(self, channel):
+    @staticmethod
+    async def has_perms(member: nextcord.Member, interaction: nextcord.Interaction) -> bool:
+        if not member.guild_permissions.administrator:
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    title="Insufficient permissions",
+                    description="You don't have enough permissions to run that command!",
+                    color=nextcord.Color.red()
+                ),
+                ephemeral=True
+            )
+            return False
+        return True
+
+    async def send_captcha_message(self, channel: nextcord.TextChannel):
+        logger = self.bot.get_guild_logger(channel.guild)
+        config = DBGuildConfig.from_guild_id(self.bot.db, channel.guild.id)
+
         message = await channel.send(
             embed=nextcord.Embed(
                 title="Beep-Boop, are you human?",
@@ -212,16 +245,10 @@ class CaptchaCommand(commands.Cog):
             ), view=CaptchaButtonView(self.bot)
         )
 
-        sql = "select guild_last_captcha_msg from config_guilds where guild_id = %(id)s"
-        result = self.bot.db.execute(sql, {"id": channel.guild.id})
+        if config is None:
+            config = DBGuildConfig.create(self.bot.db, channel.guild.id)
 
-        if not result:
-            sql = "insert into config_guilds (guild_id, guild_captcha_channel, guild_last_captcha_msg) values (%(id)s, %(channel)s, %(msg)s)"
-
-        else:
-            sql = "update config_guilds set guild_last_captcha_msg = %(msg)s where guild_id = %(id)s"
-
-        self.bot.db.execute(sql, {"id": channel.guild.id, "channel": channel.id, "msg": message.id})
+        config.guild_captcha_last_msg = message.id
 
     @nextcord.slash_command(
         name="captcha",
@@ -240,6 +267,9 @@ class CaptchaCommand(commands.Cog):
             enabled: int = nextcord.SlashOption(name="option", choices={"on": 1, "off": 0}),
     ) -> None:
         logger = self.bot.get_guild_logger(interaction.guild.id)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
 
         config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
 
@@ -263,15 +293,10 @@ class CaptchaCommand(commands.Cog):
     async def captcha_set(
             self, interaction: nextcord.Interaction, channel: nextcord.TextChannel
     ):
-
         logger = self.bot.get_guild_logger(interaction.guild.id)
-        config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
 
-        if config is None:
-            config = DBGuildConfig.create(
-                db=self.bot.db,
-                guild_id=interaction.guild.id
-            )
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
 
         try:
             await self.send_captcha_message(channel)
@@ -287,9 +312,11 @@ class CaptchaCommand(commands.Cog):
             logger.error(f"Failed to send in verify message in channel {channel.name} ({channel.id})")
             return
 
+        config = DBGuildConfig.from_guild_id(self.bot.db, interaction.guild.id)
+
         config.guild_captcha_channel = channel.id
 
-        logger.info(f"Successfully set captcha channel to {channel.name} ({channel.id})")
+        logger.info(f"Successfully set captcha channel to {channel.name} ({config.guild_captcha_channel})")
 
         await interaction.response.send_message(
             embed=nextcord.Embed(
@@ -306,6 +333,9 @@ class CaptchaCommand(commands.Cog):
     )
     async def captcha_create_role(self, interaction: nextcord.Interaction):
         guild = interaction.guild
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
 
         logger = self.bot.get_guild_logger(guild)
         try:
@@ -340,11 +370,14 @@ class CaptchaCommand(commands.Cog):
         logger.info("Created captcha role successfully!")
 
     @captcha_command.subcommand(
-         name="set_role",
-         description="Select a captcha role"
+        name="set_role",
+        description="Select a captcha role"
     )
     async def captcha_set_role(self, interaction: nextcord.Interaction, role: nextcord.Role):
         logger = self.bot.get_guild_logger(interaction.guild)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
 
         config = DBGuildConfig.from_guild_id(db=self.bot.db, guild_id=interaction.guild.id)
         if not config:
@@ -361,6 +394,257 @@ class CaptchaCommand(commands.Cog):
             ),
             ephemeral=True
         )
+
+    @captcha_command.subcommand(
+        name="status",
+        description="Shows the status of the captcha"
+    )
+    async def captcha_status(self, interaction: nextcord.Interaction):
+        logger = self.bot.get_guild_logger(interaction.guild)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
+
+        config = DBGuildConfig.from_guild_id(self.bot.db, interaction.guild.id)
+
+        if config is None:
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    title="Captcha Settings Overview",
+                    description="Captchas are currently not configured"
+                ),
+                ephemeral=True
+            )
+            return
+
+        description = (f"Captchas are currently **{'enabled' if config.guild_captcha_enabled else 'disabled'}**\n"
+                       f"Captcha channel is set to {interaction.guild.get_channel(config.guild_captcha_channel).mention}\n"
+                       f"Captcha role is set to {interaction.guild.get_role(config.guild_captcha_role).mention}")
+
+        await interaction.response.send_message(
+            embed=nextcord.Embed(
+                title="Captcha Settings Overview",
+                description=description,
+                color=nextcord.Color.green()
+            ),
+            ephemeral=True
+        )
+
+    @captcha_command.subcommand(
+        name="edit_embed",
+        description="Edit various aspects of the captcha message embed"
+    )
+    async def edit_embed(self, interaction: nextcord.Interaction) -> None:
+        pass
+
+    @edit_embed.subcommand(
+        name="title",
+        description="Allows you to set a embed title for the captcha welcome message"
+    )
+    async def edit_embed_title(self, interaction: nextcord.Interaction, title: str):
+        logger = self.bot.get_guild_logger(interaction.guild)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
+
+        config = DBGuildConfig.from_guild_id(self.bot.db, guild_id=interaction.guild.id)
+
+        if config is None:
+            config = DBGuildConfig.create(self.bot.db, interaction.guild.id)
+
+        logger.info(
+            f"User {interaction.user.name} changed the captcha embed title from \"{config.guild_captcha_embed_title}\" to \"{title}\"")
+
+        config.guild_captcha_embed_title = title
+
+        await interaction.response.send_message(
+            embed=nextcord.Embed(
+                title="Captcha Embed Settings",
+                description=f"Successfully changed the embed title to `{title}`",
+                color=nextcord.Color.green()
+            ),
+            ephemeral=True
+        )
+
+    class CaptchaEmbedDescriptionEditor(nextcord.ui.Modal):
+        def __init__(self, cog: CaptchaCommand, guild_id: int):
+            super().__init__(title="Edit description of the captcha embed")
+
+            self.cog = cog
+
+            self.config = DBGuildConfig.from_guild_id(self.cog.bot.db, guild_id)
+
+            self.description = nextcord.ui.TextInput(
+                label="Edit description",
+                style=nextcord.TextInputStyle.paragraph,
+                default_value=self.config.guild_captcha_embed_description
+            )
+
+            self.add_item(self.description)
+
+        async def callback(self, interaction: nextcord.Interaction):
+            logger = self.cog.bot.get_guild_logger(interaction.guild.id)
+
+            new_description = self.description.value
+
+            logger.info(f"User {interaction.user.name} changed the description to \"{new_description}\"")
+
+            self.config.guild_captcha_embed_description = new_description
+
+            await interaction.response.send_embed(
+                embed=nextcord.Embed(
+                    title="Captcha Embed Settings",
+                    description=f"Successfully changed description to: \n\n{new_description}",
+                    color=nextcord.Color.green()
+                ),
+                ephemeral=True
+            )
+
+    @edit_embed.subcommand(
+        name="description",
+        description="Allows you to set the embed description for the captcha welcome message"
+    )
+    async def edit_embed_description(self, interaction: nextcord.Interaction):
+        logger = self.bot.get_guild_logger(interaction.guild)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
+
+        await interaction.response.send_modal(self.CaptchaEmbedDescriptionEditor(self, interaction.guild.id))
+
+
+    @captcha_command.subcommand(
+        name="edit",
+        description="Allows you to edit the captcha"
+    )
+    async def edit_captcha(self, interaction: nextcord.Interaction):
+        pass
+
+    class CaptchaEditBackgroundColor(nextcord.ui.Modal):
+        def __init__(self, cog: CaptchaCommand, guild_id: int):
+            super().__init__(title="Edit the background color")
+
+            self.cog = cog
+
+            self.config = DBGuildConfig.from_guild_id(self.cog.bot.db, guild_id)
+
+            raw = DBGuildConfig._convert_color_back_(self.config.guild_captcha_background_color)
+
+            self.description = nextcord.ui.TextInput(
+                label="Edit the background captcha color",
+                style=nextcord.TextInputStyle.short,
+                default_value=raw
+            )
+
+            self.add_item(self.description)
+
+        async def callback(self, interaction: nextcord.Interaction):
+            logger = self.cog.bot.get_guild_logger(interaction.guild.id)
+
+            value = self.description.value
+
+            try:
+                new_value = DBGuildConfig._convert_color_(value)
+            except ValueError:
+                await interaction.response.send_message(
+                    embed=nextcord.Embed(
+                        title="Captcha Embed Settings",
+                        description="Failed to set captcha background. Please use the proper format: red_value, green_value, blue_value",
+                        color=nextcord.Color.red()
+                    ),
+                    ephemeral=True
+                )
+                return
+
+            self.config.guild_captcha_background_color = new_value
+
+            logger.info(
+                f"User {interaction.user.name} changed the captcha background color to {value}")
+
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    title="Captcha Settings",
+                    description=f"Successfully changed the color to {new_value}",
+                    color=nextcord.Color.from_rgb(new_value[0], new_value[1], new_value[2])
+                ),
+                ephemeral=True
+            )
+
+    @edit_captcha.subcommand(
+        name="background_color",
+        description="Allows you to edit the captcha background color"
+    )
+    async def edit_embed_background_color(self, interaction: nextcord.Interaction):
+        logger = self.bot.get_guild_logger(interaction.guild)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
+
+        await interaction.response.send_modal(self.CaptchaEditBackgroundColor(self, interaction.guild.id))
+
+    class CaptchaEditTextColor(nextcord.ui.Modal):
+        def __init__(self, cog: CaptchaCommand, guild_id: int):
+            super().__init__(title="Edit the text color")
+
+            self.cog = cog
+
+            self.config = DBGuildConfig.from_guild_id(self.cog.bot.db, guild_id)
+
+            raw = DBGuildConfig._convert_color_back_(self.config.guild_captcha_text_color)
+
+            self.description = nextcord.ui.TextInput(
+                label="Edit the captcha text color",
+                style=nextcord.TextInputStyle.short,
+                default_value=raw
+            )
+
+            self.add_item(self.description)
+
+        async def callback(self, interaction: nextcord.Interaction):
+            logger = self.cog.bot.get_guild_logger(interaction.guild.id)
+
+            value = self.description.value
+
+            try:
+                new_value = DBGuildConfig._convert_color_(value)
+            except ValueError:
+                await interaction.response.send_message(
+                    embed=nextcord.Embed(
+                        title="Captcha Settings",
+                        description="Failed to set captcha text color. Please use the proper format: red_value, green_value, blue_value",
+                        color=nextcord.Color.red()
+                    ),
+                    ephemeral=True
+                )
+                return
+
+            self.config.guild_captcha_background_color = new_value
+
+            logger.info(
+                f"User {interaction.user.name} changed the captcha text color to {value}")
+
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    title="Captcha Settings",
+                    description=f"Successfully changed the color to {new_value}",
+                    color=nextcord.Color.from_rgb(new_value[0], new_value[1], new_value[2])
+                ),
+                ephemeral=True
+            )
+
+
+    @edit_captcha.subcommand(
+        name="text_color",
+        description="Allows you to edit the captcha text color"
+    )
+    async def edit_captcha_text_color(self, interaction: nextcord.Interaction):
+        logger = self.bot.get_guild_logger(interaction.guild)
+
+        if not await self.has_perms(interaction.guild.get_member(interaction.user.id), interaction):
+            return
+
+        await interaction.response.send_modal(self.CaptchaEditTextColor(self, interaction.guild.id))
+
 
 
 async def setup(bot: discord_bot.Bot):

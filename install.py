@@ -24,13 +24,15 @@ def create_db():
             guild_id                        BIGINT    null,
             guild_captcha_channel           BIGINT    null,
             guild_captcha_role              BIGINT    null,
-            guild_last_captcha_msg          BIGINT    null,
+            guild_captcha_last_msg          BIGINT    null,
             guild_captcha_background_color  varchar(100) default '255, 0, 255' not null,
             guild_captcha_text_color        varchar(100) default '90, 90, 90' not null,
-            guild_captcha_embed_title       longtext  null,
-            guild_captcha_embed_description longtext  null,
+            guild_captcha_embed_title       longtext  default 'Beep-Boop, are you human?' null,
+            guild_captcha_embed_description longtext  default 'Hit the button below to verify yourself' null,
             guild_captcha_enabled           bit default 0 not null,
+            guild_captcha_timeout           int null,
             guild_log_retention             int default 30 not null,
+            guild_admins                    longtext null,
             
             constraint config_guilds_pk
                 primary key (id)

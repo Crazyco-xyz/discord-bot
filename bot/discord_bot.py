@@ -62,16 +62,16 @@ class Bot(nextcord.ext.commands.Bot):
                 setup_logger.error("Failed to get captcha cog")
                 continue
 
-            if config.guild_last_captcha_msg is not None:
+            if config.guild_captcha_last_msg is not None:
                 try:
-                    msg = await channel.fetch_message(config.guild_last_captcha_msg)
+                    msg = await channel.fetch_message(config.guild_captcha_last_msg)
                     try:
                         await msg.delete()
                     except nextcord.NotFound:
                         setup_logger.warn("Failed to delete the old captcha message since it's not found")
 
                 except nextcord.NotFound:
-                    setup_logger.warn(f"Unable to find old captcha message ({config.guild_last_captcha_msg})")
+                    setup_logger.warn(f"Unable to find old captcha message ({config.guild_captcha_last_msg})")
 
             else:
                 setup_logger.info("No last captcha message set!")
