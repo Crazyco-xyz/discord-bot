@@ -1,4 +1,3 @@
-# bot/cogs/custom_commands.py
 import nextcord
 from nextcord.ext import commands
 
