@@ -20,7 +20,7 @@ class TestCommand(commands.Cog):
     )
     async def human_rights_command(self, interaction: nextcord.Interaction) -> None:
         await interaction.response.send_message(
-            "https://media.discordapp.net/attachments/1112030896728584243/1256189308864565269/GWEG4Fe.jpg?ex=667fdcf6&is=667e8b76&hm=aac28345455eec5be201d42538cc53459f2323c86987fde37497fca4dbf229fe&=&format=webp&width=513&height=549"
+            "https://tenor.com/view/racoon-raccoon-raccoon-in-a-circle-silly-raccooon-dancing-raccoon-gif-402674747635664052"
         )
 
 
